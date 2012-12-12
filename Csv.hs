@@ -3,6 +3,7 @@
 module Csv where
 
 import Yesod
+import Control.Arrow ((***))
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -14,11 +15,17 @@ mkYesod "C" [parseRoutes|
 
 instance Yesod C
 
-newtype Show a => CSV a = CSV { unCsv :: [[a]] }
+newtype Show a => CSV a = CSV { unCsv :: ([Text], [[a]]) }
 instance Show a => ToContent (CSV a) where
-  toContent = trans.unCsv
+  toContent = toContent.trans
     where
-      trans = toContent . T.unlines . map (T.intercalate "," . map toText)
+      trans :: Show a => CSV a -> Text
+      trans = T.unlines.uncurry (:).(xHead *** xBody).unCsv
+      xBody :: Show a => [[a]] -> [Text]
+      xBody = map (T.intercalate "," . map toText)
+      xHead :: [Text] -> Text
+      xHead = T.intercalate ","
+      toText :: Show a => a -> Text
       toText = T.pack . show
 
 newtype Show a => RepCsv a = RepCsv (CSV a)
@@ -28,7 +35,7 @@ instance Show a => HasReps (RepCsv a) where
 
 getRootR :: Handler (RepCsv Int)
 getRootR = do
-  download "test.csv" $ CSV [[1,2,3],[4,5,6],[7,8,9]]
+  download "test.csv" $ CSV (["a","b","c"], [[1,2,3],[4,5,6],[7,8,9]])
 
 download :: Yesod m => Text -> CSV Int -> GHandler m s (RepCsv Int)
 download fn rep = do
