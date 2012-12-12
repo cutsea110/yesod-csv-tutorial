@@ -1,5 +1,5 @@
 {-# LANGUAGE QuasiQuotes, TemplateHaskell, OverloadedStrings, TypeFamilies, MultiParamTypeClasses #-}
-{-# LANGUAGE DatatypeContexts, FlexibleInstances #-}
+{-# LANGUAGE FlexibleInstances, GADTs #-}
 module Csv where
 
 import Yesod
@@ -15,7 +15,10 @@ mkYesod "C" [parseRoutes|
 
 instance Yesod C
 
-newtype Show a => CSV a = CSV { unCsv :: ([Text], [[a]]) }
+newtype CSV a where
+  CSV :: ([Text],[[a]]) -> CSV a
+unCsv :: CSV a -> ([Text],[[a]])
+unCsv (CSV x) = x
 instance Show a => ToContent (CSV a) where
   toContent = toContent.trans
     where
@@ -28,7 +31,8 @@ instance Show a => ToContent (CSV a) where
       toText :: Show a => a -> Text
       toText = T.pack . show
 
-newtype Show a => RepCsv a = RepCsv (CSV a)
+newtype RepCsv a where
+  RepCsv :: (CSV a) -> RepCsv a
 instance Show a => HasReps (RepCsv a) where
   chooseRep (RepCsv c) _ = return (typeOctet, toContent c)
 
