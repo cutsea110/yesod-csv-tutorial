@@ -1,4 +1,5 @@
 {-# LANGUAGE QuasiQuotes, TemplateHaskell, OverloadedStrings, TypeFamilies, MultiParamTypeClasses #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, UndecidableInstances #-}
 module Csv where
 
 import Yesod
@@ -19,20 +20,32 @@ instance RenderMessage C FormMessage where
   renderMessage _ _ = defaultFormMessage
 
 newtype CSV a = CSV { unCsv :: ([Text],[[a]]) } deriving Show
-instance Show a => ToContent (CSV a) where
+instance ToText a => ToContent (CSV a) where
   toContent = toContent.trans
     where
-      trans :: Show a => CSV a -> Text
+      trans :: ToText a => CSV a -> Text
       trans = T.unlines.uncurry (:).(xHead *** xBody).unCsv
-      xBody :: Show a => [[a]] -> [Text]
+      xBody :: ToText a => [[a]] -> [Text]
       xBody = map (T.intercalate "," . map toText)
       xHead :: [Text] -> Text
       xHead = T.intercalate ","
-      toText :: Show a => a -> Text
-      toText = T.pack . show
+
+class ToText a where
+  toText :: a -> Text
+
+instance ToText Text where
+  toText = id
+instance ToText String where
+  toText = T.pack
+instance ToText Int where
+  toText = T.pack . show
+instance ToText Double where
+  toText = T.pack . show
+instance ToText Integer where
+  toText = T.pack . show
 
 newtype RepCsv a = RepCsv (CSV a)
-instance Show a => HasReps (RepCsv a) where
+instance ToText a => HasReps (RepCsv a) where
   chooseRep (RepCsv c) _ = return (typeOctet, toContent c)
 
 data F = F {fn :: Text, dt :: Textarea, c :: Int}
