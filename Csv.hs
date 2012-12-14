@@ -44,7 +44,7 @@ sampleForm :: Maybe F -> Form F
 sampleForm mf extra = do
   (fR, fV) <- mreq textField "file name" (fn <$> mf)
   (dR, dV) <- mreq textareaField "seeds" (dt <$> mf)
-  (cR, cV) <- mreq rangeIntField "counts" (c <$> mf)
+  (cR, cV) <- mreq (rangeIntField (10,1000)) "counts" (c <$> mf)
   let res = F <$> fR <*> dR <*> cR
       w = do
         toWidget [lucius|
@@ -74,8 +74,15 @@ sampleForm mf extra = do
 |]
   return (res, w)
 
-rangeIntField :: Field s C Int
-rangeIntField = checkBool ((&&)<$>(10<=)<*>(<=1000)) ("You should set counts between 10 to 1000."::Text) intField
+rangeIntField :: (Int, Int) -> Field s C Int
+rangeIntField (l, h) = intField {
+  fieldView = \theId name attrs val isReq -> toWidget [hamlet|
+<input id="#{theId}" name="#{name}" *{attrs} type="number" :isReq:required="" value="#{showVal val}" min="#{show l}" max="#{show h}">
+|]
+  }
+  where
+    showVal = either id (T.pack.showI)
+    showI x = show (fromIntegral x::Integer)
 
 sampleCandidate :: Textarea
 sampleCandidate = Textarea "type:T-Shirt,Jacket,Polo-Shirt,Court\nsize:S,M,L,LL,XL\nsex:Man,Women,Kids"
