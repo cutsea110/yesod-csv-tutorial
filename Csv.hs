@@ -2,12 +2,10 @@
 module Csv where
 
 import Yesod
-import Yesod.Form.Functions (checkBool)
 import Control.Applicative ((<$>),(<*>))
 import Control.Arrow ((***),(&&&))
 import Data.Text (Text)
 import qualified Data.Text as T
-import Text.Julius (rawJS)
 import System.Random (getStdGen, randomRs)
 
 data C = C
