@@ -77,7 +77,7 @@ sampleForm mf extra = do
 #{extra}
 <div>
   <div>
-    ^{fvLabel fV}: ^{fvInput fV}
+    ^{fvLabel fV}: ^{fvInput fV}.csv
   <div>
     ^{fvLabel dV}: ^{fvInput dV}
   <div>
