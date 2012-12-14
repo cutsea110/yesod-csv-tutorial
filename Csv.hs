@@ -4,7 +4,6 @@ module Csv where
 import Yesod
 import Control.Applicative ((<$>),(<*>))
 import Control.Arrow ((***),(&&&))
-import Data.List (transpose)
 import Data.Text (Text)
 import qualified Data.Text as T
 import System.Random (getStdGen, randomRs)
@@ -78,9 +77,9 @@ generateCSV n = fmap (CSV . arrange) . mapM genR . extract . unTextarea
     records :: Text -> (Text, [Text])
     records = (id *** (T.split (==',') . T.tail)) . T.break (==':')
     arrange :: [(Text, [Text])] -> ([Text], [[Text]])
-    arrange = (id *** transpose) . foldr (curry mix) ([], [])
+    arrange = foldr (curry mix) ([], repeat [])
     mix :: ((Text, [Text]), ([Text],[[Text]])) -> ([Text],[[Text]])
-    mix = (:)<$>fst.fst<*>fst.snd &&& (:)<$>snd.fst<*>snd.snd
+    mix = (:)<$>fst.fst<*>fst.snd &&& zipWith (:)<$>snd.fst<*>snd.snd
     genR :: (Text, [Text]) -> IO (Text, [Text])
     genR (h, cs) = do
       g <- getStdGen
