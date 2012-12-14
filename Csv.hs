@@ -1,5 +1,5 @@
 {-# LANGUAGE QuasiQuotes, TemplateHaskell, OverloadedStrings, TypeFamilies, MultiParamTypeClasses #-}
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, UndecidableInstances #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, UndecidableInstances, FlexibleContexts #-}
 module Csv where
 
 import Yesod
@@ -51,8 +51,8 @@ instance ToText a => HasReps (RepCsv a) where
 data F = F {fn :: Text, dt :: Textarea, c :: Int}
        deriving Show
 type Form x = Html -> MForm C C (FormResult x, Widget)
-sampleForm :: Maybe F -> Form F
-sampleForm mf extra = do
+sampleForm :: (MsgC -> Text) -> Maybe F -> Form F
+sampleForm r mf extra = do
   (fR, fV) <- mreq textField "file name" (fn <$> mf)
   (dR, dV) <- mreq textareaField "seeds" (dt <$> mf)
   (cR, cV) <- mreq (rangeIntField (10,1000)) "counts" (c <$> mf)
@@ -77,15 +77,19 @@ sampleForm mf extra = do
 #{extra}
 <div>
   <div>
-    ^{fvLabel fV}: ^{fvInput fV}.csv
+    #{r FileName}: ^{fvInput fV}.csv
   <div>
-    ^{fvLabel dV}: ^{fvInput dV}
+    #{r DataSeed}: ^{fvInput dV}
   <div>
-    ^{fvLabel cV}: ^{fvInput cV}
+    #{r Counts}: ^{fvInput cV}
 |]
   return (res, w)
 
-rangeIntField :: (Int, Int) -> Field s C Int
+instance RenderMessage C MsgC where
+  renderMessage _ ("ja":_) = renderJa
+  renderMessage _ _ = renderEn
+
+rangeIntField :: RenderMessage m FormMessage => (Int, Int) -> Field s m Int
 rangeIntField (l, h) = intField {
   fieldView = \theId name attrs val isReq -> toWidget [hamlet|
 <input id="#{theId}" name="#{name}" *{attrs} type="number" :isReq:required="" value="#{showVal val}" min="#{show l}" max="#{show h}">
@@ -95,12 +99,31 @@ rangeIntField (l, h) = intField {
     showVal = either id (T.pack.showI)
     showI x = show (fromIntegral x::Integer)
 
-sampleCandidate :: Textarea
-sampleCandidate = Textarea "type:T-Shirt,Jacket,Polo-Shirt,Court\nsize:S,M,L,LL,XL\nsex:Man,Women,Kids"
+data MsgC = SampleCandidate
+          | FileName
+          | DataSeed
+          | Counts
+          | Sample
+          deriving (Show, Eq, Read)
+
+renderEn :: MsgC -> Text
+renderEn SampleCandidate = "type:T-Shirt,Jacket,Polo-Shirt,Court\nsize:S,M,L,LL,XL\ncategory:Man,Women,Kids"
+renderEn FileName = "file name"
+renderEn DataSeed = "seed"
+renderEn Counts = "counts"
+renderEn Sample = "sample"
+
+renderJa :: MsgC -> Text
+renderJa SampleCandidate = "種別:Tシャツ,ジャケット,ポロシャツ,コート\nサイズ:S,M,L,LL,XL\nカテゴリ:紳士服,婦人服,キッズ"
+renderJa FileName = "ファイル名"
+renderJa DataSeed = "データの種"
+renderJa Counts = "データ数"
+renderJa Sample = "サンプル"
 
 getRootR :: Handler RepHtml
 getRootR = do
-  ((_, w), e) <- runFormPost $ sampleForm $ Just $ F "sample" sampleCandidate 1000
+  r <- getMessageRender
+  ((_, w), e) <- runFormPost $ sampleForm r $ Just $ F (r Sample) (Textarea $ r SampleCandidate) 1000
   defaultLayout [whamlet|
 <form method=post action=@{RootR} enctype=#{e}>
   ^{w}
@@ -109,7 +132,8 @@ getRootR = do
 
 postRootR :: Handler (RepCsv Text)
 postRootR = do
-  ((r, _), _) <- runFormPost $ sampleForm Nothing
+  r <- getMessageRender
+  ((r, _), _) <- runFormPost $ sampleForm r Nothing
   case r of
     FormSuccess x -> download x
     FormFailure ms -> do
