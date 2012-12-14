@@ -2,10 +2,12 @@
 module Csv where
 
 import Yesod
+import Yesod.Form.Functions (checkBool)
 import Control.Applicative ((<$>),(<*>))
 import Control.Arrow ((***),(&&&))
 import Data.Text (Text)
 import qualified Data.Text as T
+import Text.Julius (rawJS)
 import System.Random (getStdGen, randomRs)
 
 data C = C
@@ -35,14 +37,45 @@ newtype RepCsv a = RepCsv (CSV a)
 instance Show a => HasReps (RepCsv a) where
   chooseRep (RepCsv c) _ = return (typeOctet, toContent c)
 
-data F = F {name::Text, candidates :: Textarea, num :: Int}
+data F = F {fn :: Text, dt :: Textarea, c :: Int}
        deriving Show
 type Form x = Html -> MForm C C (FormResult x, Widget)
 sampleForm :: Maybe F -> Form F
-sampleForm mf = renderDivs $ F 
-             <$> areq textField "file name" (name <$> mf)
-             <*> areq textareaField "candidates" (candidates <$> mf)
-             <*> areq intField "generate number" (num <$> mf)
+sampleForm mf extra = do
+  (fR, fV) <- mreq textField "file name" (fn <$> mf)
+  (dR, dV) <- mreq textareaField "seeds" (dt <$> mf)
+  (cR, cV) <- mreq rangeIntField "counts" (c <$> mf)
+  let res = F <$> fR <*> dR <*> cR
+      w = do
+        toWidget [lucius|
+##{fvId fV} {
+  width: 8em;
+  text-align: center;
+}
+##{fvId dV} {
+  width: 600px;
+  height: 10em;
+}
+##{fvId cV} {
+  width: 6em;
+  size: 5;
+  text-align: right;
+}
+|]
+        [whamlet|
+#{extra}
+<div>
+  <div>
+    ^{fvLabel fV}: ^{fvInput fV}
+  <div>
+    ^{fvLabel dV}: ^{fvInput dV}
+  <div>
+    ^{fvLabel cV}: ^{fvInput cV}
+|]
+  return (res, w)
+
+rangeIntField :: Field s C Int
+rangeIntField = checkBool ((&&)<$>(10<=)<*>(<=1000)) ("You should set counts between 10 to 1000."::Text) intField
 
 sampleCandidate :: Textarea
 sampleCandidate = Textarea "type:T-Shirt,Jacket,Polo-Shirt,Court\nsize:S,M,L,LL,XL\nsex:Man,Women,Kids"
@@ -61,6 +94,9 @@ postRootR = do
   ((r, _), _) <- runFormPost $ sampleForm Nothing
   case r of
     FormSuccess x -> download x
+    FormFailure ms -> do
+      setMessage $ toHtml $ foldl T.append T.empty ms
+      redirect RootR
     _ -> redirect RootR
 
 download :: F -> Handler (RepCsv Text)
