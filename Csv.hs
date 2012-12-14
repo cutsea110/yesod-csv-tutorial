@@ -1,10 +1,9 @@
 {-# LANGUAGE QuasiQuotes, TemplateHaskell, OverloadedStrings, TypeFamilies, MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleInstances #-}
 module Csv where
 
 import Yesod
 import Control.Applicative ((<$>),(<*>))
-import Control.Arrow ((***))
+import Control.Arrow ((***),(&&&))
 import Data.List (transpose)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -20,7 +19,7 @@ instance Yesod C
 instance RenderMessage C FormMessage where
   renderMessage _ _ = defaultFormMessage
 
-newtype CSV a = CSV { unCsv :: ([Text],[[a]]) }
+newtype CSV a = CSV { unCsv :: ([Text],[[a]]) } deriving Show
 instance Show a => ToContent (CSV a) where
   toContent = toContent.trans
     where
@@ -46,9 +45,12 @@ sampleForm mf = renderDivs $ F
              <*> areq textareaField "candidates" (candidates <$> mf)
              <*> areq intField "generate number" (num <$> mf)
 
+sampleCandidate :: Textarea
+sampleCandidate = Textarea "type:T-Shirt,Jacket,Polo-Shirt,Court\nsize:S,M,L,LL,XL\nsex:Man,Women,Kids"
+
 getRootR :: Handler RepHtml
 getRootR = do
-  (w, e) <- generateFormPost $ sampleForm $ Just $ F "sample" (Textarea "type:X,Y,Z\ncost:100,200,300,400,500,600,700\ncategory:Kid,Man,Women") 1000
+  ((_, w), e) <- runFormPost $ sampleForm $ Just $ F "sample" sampleCandidate 1000
   defaultLayout [whamlet|
 <form method=post action=@{RootR} enctype=#{e}>
   ^{w}
@@ -64,22 +66,30 @@ postRootR = do
 
 download :: F -> Handler (RepCsv Text)
 download (F fn cs n) = do
-  rows <- liftIO $ generateFrom (unTextarea cs) n
-  downloadCSV (fn `T.append` ".csv") $ CSV rows
+  setHeader "Content-Disposition" $ "attachiment; filename=" `T.append` fn `T.append` ".csv"  
+  csv <- liftIO $ generateCSV n cs
+  return (RepCsv csv)
 
-downloadCSV :: Yesod m => Text -> CSV Text -> GHandler m s (RepCsv Text)
-downloadCSV fn rep = do
-  setHeader "Content-Disposition" $ T.append "attachiment; filename=" fn
-  return (RepCsv rep)
-
-generateFrom :: Text -> Int -> IO ([Text], [[Text]])
-generateFrom cs n = fmap toCSV $ mapM (genR n) $ extract cs
-
-extract :: Text -> [(Text, [Text])]
-extract = map (toDataList . T.break (==':')) . lines'
+generateCSV :: Int -> Textarea -> IO (CSV Text)
+generateCSV n = fmap (CSV . arrange) . mapM genR . extract . unTextarea
   where
-    toDataList = id *** (T.split (==',') . T.tail)
+    extract :: Text -> [(Text, [Text])]
+    extract = map records . lines'
+    records :: Text -> (Text, [Text])
+    records = (id *** (T.split (==',') . T.tail)) . T.break (==':')
+    arrange :: [(Text, [Text])] -> ([Text], [[Text]])
+    arrange = (id *** transpose) . foldr (curry mix) ([], [])
+    mix :: ((Text, [Text]), ([Text],[[Text]])) -> ([Text],[[Text]])
+    mix = (:)<$>fst.fst<*>fst.snd &&& (:)<$>snd.fst<*>snd.snd
+    genR :: (Text, [Text]) -> IO (Text, [Text])
+    genR (h, cs) = do
+      g <- getStdGen
+      return (h, take n $ map (cs!!) $ randomRs (0, length cs-1) g)
 
+main :: IO ()
+main = warpDebug 3000 C
+
+-- | utility which deprecated from Data.Text
 lines' :: Text -> [Text]
 lines' ps | T.null ps = []
           | otherwise = h : case T.uncons t of
@@ -92,16 +102,3 @@ lines' ps | T.null ps = []
   where
     (h,t) = T.span notEOL ps
     notEOL c = c /= '\n' && c /= '\r'
-
-genR :: Int -> (Text, [Text]) -> IO (Text, [Text])
-genR n (h, cs) = do
-  g <- getStdGen
-  return $ (h, take n $ map (cs!!) $ randomRs (0, length cs-1) g)
-
-toCSV :: [(Text, [Text])] -> ([Text], [[Text]])
-toCSV = (id *** transpose) . foldr f ([], [])
-  where
-    f (h, b) (hs, bs) = (h:hs, b:bs)
-
-main :: IO ()
-main = warpDebug 3000 C
