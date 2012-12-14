@@ -46,7 +46,7 @@ instance ToText Integer where
 
 newtype RepCsv a = RepCsv (CSV a)
 instance ToText a => HasReps (RepCsv a) where
-  chooseRep (RepCsv c) _ = return (typeOctet, toContent c)
+  chooseRep (RepCsv csv) _ = return (typeOctet, toContent csv)
 
 data F = F {fn :: Text, dt :: Textarea, c :: Int}
        deriving Show
@@ -118,8 +118,8 @@ postRootR = do
     _ -> redirect RootR
 
 download :: F -> Handler (RepCsv Text)
-download (F fn cs n) = do
-  setHeader "Content-Disposition" $ "attachiment; filename=" `T.append` fn `T.append` ".csv"  
+download (F f cs n) = do
+  setHeader "Content-Disposition" $ "attachiment; filename=" `T.append` f `T.append` ".csv"  
   csv <- liftIO $ generateCSV n cs
   return (RepCsv csv)
 
@@ -154,4 +154,4 @@ lines' ps | T.null ps = []
       _               -> lines' t'
   where
     (h,t) = T.span notEOL ps
-    notEOL c = c /= '\n' && c /= '\r'
+    notEOL = (&&)<$>(/='\n')<*>(/='\r')
